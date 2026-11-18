@@ -85,21 +85,33 @@ const loginUser = async (req, res, next) => {
       }
     );
 
+
+    const expiresIn = process.env.JWT_EXPIRES_IN || "15m";
+
+    // Set the JWT in an HttpOnly cookie.
+    res.cookie("ems_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 15 * 60 * 1000,
+    });
+
     return res.status(200).json({
       success: true,
       message: "Login successful",
       data: {
-        token,
         tokenType: "Bearer",
-        expiresIn: process.env.JWT_EXPIRES_IN || "15m",
+        expiresIn,
         user: {
-          id: user._id,
+          id: user._id.toString(),
           name: user.name,
           email: user.email,
           role: user.role,
         },
       },
     });
+
   } catch (error) {
     next(error);
   }

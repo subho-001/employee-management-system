@@ -3,34 +3,34 @@ const jwt = require("jsonwebtoken");
 
 const requireAuth = (req, res, next) => {
   try {
+    // Prefer the HttpOnly cookie; retain Bearer support for existing API clients.
     const authHeader = req.headers.authorization;
+    let token = req.cookies?.ems_token;
 
-    // Check whether the Authorization header exists
-    if (!authHeader) {
+    if (!token && authHeader) {
+      const [scheme, value] = authHeader.split(" ");
+
+      if (scheme === "Bearer" && value) {
+        token = value;
+      } else {
+        return res.status(401).json({
+          success: false,
+          message: "Invalid authorization format",
+        });
+      }
+    }
+
+    if (!token) {
       return res.status(401).json({
         success: false,
         message: "Authentication required",
       });
     }
 
-    // Expected format: Bearer <token>
-    const [scheme, token] = authHeader.split(" ");
+    const payload = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
 
-    if (scheme !== "Bearer" || !token) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid authorization format",
-      });
-    }
-
-    // Verify the token's signature and expiration
-    const payload = jwt.verify(
-      token,
-      process.env.JWT_SECRET,
-      { algorithms: ["HS256"] }
-    );
-
-    // Ensure the token contains the required identity and role
     if (
       typeof payload.sub !== "string" ||
       !["admin", "viewer"].includes(payload.role)
@@ -41,7 +41,6 @@ const requireAuth = (req, res, next) => {
       });
     }
 
-    // Make authenticated user information available to later middleware
     req.user = {
       id: payload.sub,
       role: payload.role,
@@ -50,9 +49,9 @@ const requireAuth = (req, res, next) => {
     next();
   } catch (error) {
     if (
-      error.name === "JsonWebTokenError" ||
-      error.name === "TokenExpiredError" ||
-      error.name === "NotBeforeError"
+      ["JsonWebTokenError", "TokenExpiredError", "NotBeforeError"].includes(
+        error.name,
+      )
     ) {
       return res.status(401).json({
         success: false,
